@@ -18,12 +18,12 @@
 #define DDRA    (* (volatile uint8_t *) 0x21)
 #define DDRB    (* (volatile uint8_t *) 0x24)
 
-int8_t name_is_set = 0;
-const char *token = ":";
-const uint8_t sname[] = "sname";
-const char *scname = "scname";
-const char *scval = "scval";
-const char *qych = "qych";
+uint8_t mask;
+
+void set_output_channels(void){
+  const uint8_t out = 255;
+  DDRB |= out;
+}
 
 void parse_string(uint8_t* src, uint8_t* key, uint8_t* value){
   while(*src != ':'){
@@ -61,12 +61,21 @@ int main(void){
   uint8_t value[SIZE];
 
   serial_init();
+  set_output_channels();
 
   while(1){
     serial_get_string(buf);
     parse_string(buf, key, value);
-    if(my_strcmp(key,sname) == 0 && name_is_set == 0){
-      serial_put_string((uint8_t *) "name setted.");
+    serial_put_string(key);
+    serial_put_string(value);
+    int bit = key[0]-'0';
+    serial_put_string((uint8_t *) bit);
+    mask = (1<<bit);
+    if(my_strcmp((uint8_t *)"1",value) == 0){
+      PORTB |= (1<<bit);
+      serial_put_string((uint8_t *) "on\n");
+    }else if(my_strcmp((uint8_t *)"0", value) == 0){
+      PORTB &= ~(1 << (bit));
     }
   }
 }
