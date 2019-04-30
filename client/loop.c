@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include "avr_client_shell.h"
 
+
 void avr_client_loop(void){
   char *line;
   char **args;
   int   status;
 
   do {
+
     printf("\nsmart_house_host> ");
     line = avr_client_read_line();
     args = avr_client_parse(line);
