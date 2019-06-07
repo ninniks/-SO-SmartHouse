@@ -1,26 +1,24 @@
 #include <stdio.h>
 #include <string.h>
-#include "avr_client_serial.h"
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#include "loop.h"
 #include <stdbool.h>
+#include "shell.h"
+#include "avr_client_serial.h"
+#include "error.h"
 
 #define DIGITAL_OUT "0"
 #define DIGITAL_IN  "1"
 #define ANALOG "2"
-#define ACK "ack"
+#define NACK "nack"
 
-const char *ack = "ok";
-const char *handshake = "ACMino";
 const char *portname = "/dev/ttyACM0";
 char buf = '\0';
-char string[512];
-char name[256];
+char *name;
 bool name_is_set = false;
 int fd;
 //builtin functions of smart house
@@ -32,10 +30,11 @@ int query_channels(char **args);
 int get_channel_value(char **args);
 int get_adc_channel_value(char **args);
 
-
+char *user_names;
 char *user_dout_channels_names[8] = { NULL };
 char *user_din_channels_names[8] = { NULL };
 char *user_adc_channels_names[8] = { NULL };
+
 
 char *default_adc_channels_name[] = {
   "analog_in_0",
@@ -91,8 +90,6 @@ int (*builtin_func[]) (char **) = {
 };
 
 int avr_connection_init(){
-
-
   fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
   if(fd < 0){
     fprintf(stderr, "Error opening device: %s\n", strerror(errno));
@@ -115,8 +112,8 @@ int avr_channels_num(char **channels){
 int avr_get_conf_switch(char **args, char **channels){
   int i;
   for(i = 0; i < avr_channels_num(channels); i++){
-    if(channels[i] != NULL){
-      if(strcmp(args[1], channels[i]) == 0)
+    if(channels[i] != NULL && args[2] != NULL){
+      if(strcmp(args[2], channels[i]) == 0)
         return i;
     }
   }
@@ -126,7 +123,7 @@ int avr_get_conf_switch(char **args, char **channels){
 int avr_check_switches_name(char **args, char **channels){
   int i;
   for(i = 0; i < avr_channels_num(channels); i++){
-    if(strcmp(args[1], channels[i]) == 0){
+    if(strcmp(args[2], channels[i]) == 0){
       return i;
     }
   }
@@ -135,7 +132,7 @@ int avr_check_switches_name(char **args, char **channels){
 }
 
 int avr_chech_user_channel_input(char **args, char *channel_name, int size){
-  if(args[2] != NULL && (strncmp(channel_name, args[1], size) == 0)){
+  if(args[3] != NULL && (strncmp(channel_name, args[2], size) == 0)){
     return 0;
   }
   return 1;
@@ -143,9 +140,8 @@ int avr_chech_user_channel_input(char **args, char *channel_name, int size){
 
 void avr_write_channel_name(char **args, char *channels[], int p){
   if(channels[p] == NULL){
-    channels[p] = (char *) malloc(sizeof(args[2])*sizeof(char));
-    strcpy(channels[p], args[2]);
-    printf("Done.\n");
+    channels[p] = (char *) malloc(sizeof(args[3])*sizeof(char));
+    strcpy(channels[p], args[3]);
   }
 }
 
@@ -160,112 +156,150 @@ void print_channels(char *channels[]){
   }
 }
 
+int send_data(char *name, char *i_type, int channel, char args[]){
+  char *string;
+  char c[2];
+  sprintf(c,"%d", channel);
+  int size = 8*sizeof(char);
+  string = malloc(size);
+  sprintf(string, "%s%s%s%s%s%s%s%s", ":", i_type, ":", c , ":", args, ";", "\r");
+  size = sizeof(string) + sizeof(name);
+  char *send = malloc(size*sizeof(char));
+  sprintf(send, "%s%s", name, string);
+  write(fd, send, strlen(send));
+  if(strcmp(i_type, DIGITAL_IN) == 0){
+    string = calloc(1, sizeof(char));
+    read(fd, string, 1);
+    printf("%s\n", string);
+  }else if(strcmp(i_type, ANALOG) == 0){
+    string = calloc(4, sizeof(char));
+    read(fd, string, 4);
+    printf("%s\n", string);
+  }
+  free(send);
+  free(string);
+  return 1;
+}
+
 int set_name(char **args){
   if(args[1] == NULL){
-    fprintf(stderr, "avr_client: expected argument to \"set_name\"\n");
-  }else{
-    snprintf(name, sizeof name, "%s", args[1]);
+    return NO_ARGS;
+  }else if(!name_is_set){
+    int size = sizeof(args[1]);
+    name = malloc(size);
+    sprintf(name, "%s%s", args[1], "\r");
+    write(fd, name, strlen(name));
+    strcpy(name,args[1]);
     name_is_set = true;
+    return SUCCESS;
   }
+  return NAME_SETTED;
 }
 
 int set_channel_name(char **args){
   int p;
-  char *name;
   if(args[1] == NULL){
-    fprintf(stderr, "avr_client: expected argument to \"set_channel_name\"\n");
-  }else if(name_is_set){
+    return NO_ARGS;
+  }else if(!name_is_set){
+    return NO_NAME;
+  }else if(strcmp(name, args[1]) != 0){
+    return BAD_NAME;
+  }else{
     if(avr_chech_user_channel_input(args, "switch_", 7) == 0){
       p = avr_get_conf_switch(args, default_dout_channels_name);
-      if(p != -1){
-        avr_write_channel_name(args, user_dout_channels_names, p);
-      }else{
-        fprintf(stderr,"avr_client: no channnel named: %s\n",args[1]);
+      if(p == -1){
+        return BAD_CHANNEL_NAME;
       }
+
+      avr_write_channel_name(args, user_dout_channels_names, p);
+      return SUCCESS;
+
     }else if(avr_chech_user_channel_input(args, "digital_in_", 11) == 0) {
       p = avr_get_conf_switch(args, default_din_channels_name);
-      if(p != -1){
-        avr_write_channel_name(args, user_din_channels_names, p);
-      }else{
-        fprintf(stderr,"avr_client: no channnel named: %s\n",args[1]);
+      if(p == -1){
+        return BAD_CHANNEL_NAME;
       }
+
+      avr_write_channel_name(args, user_din_channels_names, p);
+      return SUCCESS;
+
     }else if(avr_chech_user_channel_input(args, "analog_in_", 10) == 0){
       p = avr_get_conf_switch(args, default_adc_channels_name);
-      if(p != -1){
-        avr_write_channel_name(args, user_adc_channels_names, p);
-      }else{
-        fprintf(stderr,"avr_client: no channnel named: %s\n",args[1]);
+      if(p == -1){
+        return BAD_CHANNEL_NAME;
       }
-    }else{
-      fprintf(stderr, "avr_client: \"set_channel_name\" usage: <channelDefaultName_(n)> <name>. \n");
-    }
-  }else{
-    fprintf(stderr, "avr_client: please set a name to the device. \n");
-  }
-}
 
-int set_channel_value(char **args){
-  int pos;
-  if(args[1] == NULL){
-    fprintf(stderr, "avr_client: expected argument to \"set_channel_value\"\n");
-  }else if(name_is_set){
-    pos = avr_get_conf_switch(args, user_dout_channels_names);
-    if(pos != -1){
-      if((strcmp(args[2],"0") != 0) && (strcmp(args[2], "1")!= 0)){
-        fprintf(stderr, "avr_client: invalid switch value.\n");
-      }else{
-        char *s_checksum = malloc(4*sizeof(char));
-        char c[256];
-        sprintf(c,"%d",pos);
-        snprintf(string, sizeof string, "%s%s%s%s%s%s%s", DIGITAL_OUT, ":", c , ":", args[2], ";", "\r");
-        write(fd, string, strlen(string));
-        read(fd, string, 4)
-     }
-    }else{
-      fprintf(stderr, "avr_client: no switch with name: %s", args[1]);
+      avr_write_channel_name(args, user_adc_channels_names, p);
+      return SUCCESS;
+
     }
-  }else{
-    fprintf(stderr, "avr_client: no device name set. Please use \"set_name\" \n ");
   }
+  return BAD_ARGS;
+}
+// && strcmp(args[1], name) == 0
+int set_channel_value(char **args){
+  int channel;
+  if(args[1] == NULL){
+    return NO_ARGS;
+  }else if(!name_is_set){
+    return NO_NAME;
+  }else if(strcmp(args[1] ,name) != 0){
+    return BAD_NAME;
+  }
+  channel = avr_get_conf_switch(args, user_dout_channels_names);
+  if(channel == -1){
+    return BAD_CHANNEL_NAME;
+  }else{
+    if(args[3] == NULL || (strcmp(args[3],"0") != 0) && (strcmp(args[3], "1")!= 0)){
+      return BAD_VALUE;
+    }else{
+      if(send_data(name, DIGITAL_OUT, channel, args[3]) == -1)
+        return BAD_DATA;
+      return SUCCESS;
+   }
+  }
+  return BAD_ARGS;
 }
 
 int get_channel_value(char **args){
-  int pos;
+  int channel;
   if(args[1] == NULL){
-    fprintf(stderr, "avr_client: expected argument to \"get_channel_value\"\n");
-  }else if(name_is_set){
-    pos = avr_get_conf_switch(args, user_din_channels_names);
-    if(pos != -1){
-        char c[256];
-        sprintf(c,"%d",pos);
-        snprintf(string, sizeof string, "%s%s%s%s%s%s%s", DIGITAL_IN, ":", c , ":", args[2], ";","\r");
-        write(fd, string, strlen(string));
-        read(fd, string, sizeof(1));
-     }
-    }else{
-      fprintf(stderr, "avr_client: no switch with name: %s", args[1]);
-    }
+    return NO_ARGS;
+  }else if(!name_is_set){
+    return NO_NAME;
+  }else if(strcmp(args[1], name) != 0){
+    return BAD_NAME;
+  }
+  channel = avr_get_conf_switch(args, user_din_channels_names);
+  if(channel == -1){
+    return BAD_CHANNEL_NAME;
+  }else{
+    if(send_data(name, DIGITAL_IN, channel, args[2]) == -1)
+      return BAD_DATA;
+    return SUCCESS;
+  }
+  return BAD_ARGS;
 }
 
 int get_adc_channel_value(char **args){
-  int pos;
+  int channel;
   if(args[1] == NULL){
-    fprintf(stderr, "avr_client: expected argument to \"get_channel_value\"\n");
-  }else if(name_is_set){
-    pos = avr_get_conf_switch(args, user_adc_channels_names);
-    if(pos != -1){
-        char c[256];
-        char res[3];
-        sprintf(c,"%d",pos);
-        snprintf(string, sizeof string, "%s%s%s%s%s%s%s", ANALOG, ":", c , ":", "0", ";","\r");
-        write(fd, string, strlen(string));
-        read(fd, res, 4);
-        printf("%s", res);
-        memset(&res, 0, sizeof(res));
-     }
-    }else{
-      fprintf(stderr, "avr_client: no switch with name: %s", args[1]);
-    }
+    return NO_ARGS;
+  }else if(!name_is_set){
+    return NO_NAME;
+  }else if(strcmp(args[1], name) != 0){
+    return BAD_NAME;
+  }
+
+  channel = avr_get_conf_switch(args, user_adc_channels_names);
+  if(channel == -1){
+      return BAD_CHANNEL_NAME;
+   }else{
+     if(send_data(name, ANALOG, channel, args[2]) == -1)
+      return BAD_DATA;
+    return SUCCESS;
+  }
+  return BAD_ARGS;
 }
 
 int query_channels(char **args){
@@ -291,7 +325,6 @@ int avr_client_execute(char **args){
    }
  }
 
- fprintf(stderr, "avr_client: command not found. Please use \"help\" for info.\n");
+ return NO_COMMAND;
 
- return 1;
 }
