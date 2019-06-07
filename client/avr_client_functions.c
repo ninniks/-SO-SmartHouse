@@ -29,6 +29,7 @@ int set_channel_value(char **args);
 int query_channels(char **args);
 int get_channel_value(char **args);
 int get_adc_channel_value(char **args);
+int help();
 
 char *user_names;
 char *user_dout_channels_names[8] = { NULL };
@@ -86,7 +87,8 @@ int (*builtin_func[]) (char **) = {
   &set_channel_value,
   &query_channels,
   &get_channel_value,
-  &get_adc_channel_value
+  &get_adc_channel_value,
+  &help
 };
 
 int avr_connection_init(){
@@ -311,6 +313,14 @@ int query_channels(char **args){
   print_channels(user_adc_channels_names);
 }
 
+int help(){
+  printf("\nset_name <device_name> (name can't be modified if already setted)");
+  printf("\nset_channel_name <device_name> <default_channel_name> <user_channel_name> (set channel's name [digital_in_(n), switch_(n), analog_in_(n)])");
+  printf("\nset_channel_value <device_name> <user_channel_name> <value> (set digital_out channel's value 0 or 1)");
+  printf("\nget_channel_value <device_name> <user_channel_name> (get digital_in channel's value)");
+  printf("\nget_adc_channel_value <device_name> <user_channel_name> (get adc channel's value)");
+  printf("\nquery_channels (lists all channels setted by the user)\n");      
+}
 
 int avr_client_execute(char **args){
   int i;
