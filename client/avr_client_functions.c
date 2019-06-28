@@ -98,7 +98,7 @@ int avr_connection_init(){
     return 0;
   }
 
-  serial_init(fd, B19200, 0);
+  serial_init(fd, 115200, 0);
   set_blocking(fd, 0);
   return 1;
 }
@@ -188,7 +188,7 @@ int set_name(char **args){
     return NO_ARGS;
   }else if(!name_is_set){
     int size = sizeof(args[1]);
-    name = malloc(size);
+    name = malloc(size*sizeof(char));
     sprintf(name, "%s%s", args[1], "\r");
     write(fd, name, strlen(name));
     strcpy(name,args[1]);
@@ -252,7 +252,8 @@ int set_channel_value(char **args){
   if(channel == -1){
     return BAD_CHANNEL_NAME;
   }else{
-    if(args[3] == NULL || (strcmp(args[3],"0") != 0) && (strcmp(args[3], "1")!= 0)){
+    int val;
+    if(args[3] == NULL || (val = atoi(args[3]) < 0) && (val = atoi(args[3]) > 255)){
       return BAD_VALUE;
     }else{
       if(send_data(name, DIGITAL_OUT, channel, args[3]) == -1)
@@ -316,7 +317,8 @@ int query_channels(char **args){
 int help(){
   printf("\nset_name <device_name> (name can't be modified if already setted)");
   printf("\nset_channel_name <device_name> <default_channel_name> <user_channel_name> (set channel's name [digital_in_(n), switch_(n), analog_in_(n)])");
-  printf("\nset_channel_value <device_name> <user_channel_name> <value> (set digital_out channel's value 0 or 1)");
+  printf("\nset_channel_value <device_name> <user_channel_name> <value> (set digital_out channel's value 0 or 1 for channels from 0 to 3)");
+  printf("\nset_channel_value <device_name> <user_channel_name> <value> (PWM mode for channel from 4 to 7 values from 0[HIGH] to 255[LOW])");
   printf("\nget_channel_value <device_name> <user_channel_name> (get digital_in channel's value)");
   printf("\nget_adc_channel_value <device_name> <user_channel_name> (get adc channel's value)");
   printf("\nquery_channels (lists all channels setted by the user)\n");      
