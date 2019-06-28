@@ -29,10 +29,10 @@ BINS=main.elf
 
 # put here the additional .o files you want to generate
 # one .c file for each .o should be present
-OBJS=serial.o
+OBJS=uart.o
 
 # put here the additional header files needed for compilation
-HEADERS=serial.h
+HEADERS=uart.h
 
 # the file below contains the actual rules
 

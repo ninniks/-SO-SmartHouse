@@ -8,11 +8,22 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "serial.h"
 #include "utils.h"
+#include "uart.h"
+#include <avr/io.h>
 
 uint8_t o_mask;
 uint8_t i_mask;
+
+
+struct UART* uart;
+
+void printString(char* s){
+  int l=strlen(s);
+  for(int i=0; i<l; ++i, ++s)
+    UART_putChar(uart, (uint8_t) *s);
+}
+
 
 void set_output_channels(void){ //setting port to output mode
   const uint8_t out = 255;
@@ -46,11 +57,11 @@ uint16_t adc_read(uint8_t channel){
 }
 
 //my string parser
-void parse_string(uint8_t* src, uint8_t* name, uint8_t* i_type, uint8_t* channel, uint8_t* value){
+void parse_string(char* src, char* name, char* i_type, char* channel, char* value){
   int word = 0;
 
   while(*src != ';'){
-    uint8_t c = *src;
+    char c = *src;
     if(*src == ':'){
       ++src;
       c = *src;
@@ -94,60 +105,110 @@ int8_t my_strcmp(const uint8_t* s1, const uint8_t* s2){
   return (int8_t)*s1 - (int8_t)*s2;
 }
 
-int main(void){
-  uint8_t name[SIZE];
-  uint8_t buf[SIZE];
-  uint8_t disp[SIZE];
-  uint8_t channel[SIZE];
-  uint8_t value[SIZE];
-  uint8_t type[SIZE];
+void getString(char* string){
+  string[0] = 0;
+  int size = 0;
+  while(1){
+    uint8_t c = UART_getChar(uart);
+    string[size] = c;
+    ++size;
+    string[size] = 0;
+    if (c == 0xFF ||c == '\n' || c=='\r' || c==0) {
+      break;
+    }
+  }
+}
 
+void pwm_init(void){
+  TCCR1A=TCCRA_MASK;
+  TCCR2A=TCCRA1_MASK;
+  TCCR1B=TCCRB_MASK;
+  TCCR2B=TCCRB1_MASK;
+
+  OCR2A = 255;
+  OCR1BL = 255;
+  OCR1AL = 255;
+  OCR1CL = 255;
+}
+
+
+int main(void){
+   uart = UART_init("uart_0", 115200);
+
+  char buf[SIZE];
+  char name[SIZE];
+  char disp[SIZE];
+  char channel[SIZE];
+  char value[SIZE];
+  char type[SIZE];
   char mychar[5];
-  serial_init();
-  serial_get_string((uint8_t *) buf);
-  strcpy((char *) name,(char *) buf);
+ // serial_init();
+
+  getString(buf);
+  strcpy(name, buf);
 
   set_output_channels();
   set_input_channels();
   ADC_init();
+  pwm_init();
 
   while(1){
-    serial_get_string(buf);
+    //serial_get_string(buf);
+    getString(buf);
+    //printString(buf);
     parse_string(buf, disp, type, channel, value);
+    //printString(disp);
+    /* printString(type);
+    printString(channel);
+    printString(value); */
 
     uint16_t adc_value;
     int t = type[0]-'0';
     int bit = channel[0]-'0';
-    strcat((char *)disp, "\r");
+    int val = atoi(value);
+    strcat(disp, "\r");
 
-    if(my_strcmp(disp,name) == 0){
+    if(strcmp(disp,name) == 0){
       switch(t){
         case DIGITAL_OUT:
-          o_mask = (1<<bit);
-          if(strcmp("1",(char *)value) == 0){
-            PORTB |= (1<<bit);
-          }else if(strcmp("0",(char *)value) == 0){
-            PORTB &= ~(1 << (bit));
+          if(bit < 4){
+            printString(value);
+            if(val > 0){
+              PORTB |= (1<<bit);
+            }else{
+              PORTB &= ~(1 << (bit));
+            }
+          }else if(bit == 4){
+            OCR2A = val;
+          }else if(bit == 5){
+            OCR1AL = val;
+          }else if(bit == 6){
+            OCR1BL = val;
+          }else{
+            OCR1CL = val;
           }
         break;
 
         case DIGITAL_IN:
           i_mask = (1<<bit);
           if((PINA & (1<< bit)) == i_mask){
-            serial_put_string((uint8_t *) "1");
+            //serial_put_string((uint8_t *) "1");
+            printString("1");
           }else{
-            serial_put_string((uint8_t *) "0");
+            //serial_put_string((uint8_t *) "0");
+            printString("0");
           }
         break;
 
         case ANALOG:
           adc_value = adc_read(bit);
           sprintf(mychar,"%04d",adc_value);
-          serial_put_string((uint8_t *) *(&mychar));
+          //serial_put_string((uint8_t *) *(&mychar));
+          printString(mychar);
         break;
       }
     }else{
-      serial_put_string((uint8_t *) NACK);
+      printString(NACK);
     }
   }
 }

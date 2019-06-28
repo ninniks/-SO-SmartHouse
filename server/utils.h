@@ -28,3 +28,9 @@
 #define ADPS2  2
 #define ADEN   7 //ADCSRA bit 7 set to 1 enables the ADC
 #define ADSC   6 //ADC start conversion
+
+
+#define TCCRA_MASK (1<<WGM10)|(1<<COM1C0)|(1<<COM1C1) | (1<<COM1A1) | (1<<COM1A0) | (1<<COM1B1) | (1<<COM1B0)
+#define TCCRB_MASK ((1<<WGM12)|(1<<CS10)) | (1>>WGM13)
+#define TCCRA1_MASK (1<<COM2A0) | (1<<COM2A1) | (1<<WGM20)
+#define TCCRB1_MASK ((1<WGM22)|(1<<CS20))

@@ -15,7 +15,8 @@ AVRDUDE_FLAGS = -p m2560 -P $(AVRDUDE_PORT) -c $(AVRDUDE_PROGRAMMER) -b 115200
 AVRDUDE_FLAGS += $(AVRDUDE_NO_VERIFY)
 AVRDUDE_FLAGS += $(AVRDUDE_VERBOSE)
 AVRDUDE_FLAGS += $(AVRDUDE_ERASE_COUNTER)
-AVRDUDE_FLAGS += -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.conf
+AVRDUDE_FLAGS += -D -q -V -C /etc/avrdude.conf
+#/usr/share/arduino/hardware/tools/avr/../avrdude.conf
 AVRDUDE_FLAGS += -c wiring
 
 .phony:	clean all
